@@ -15,7 +15,7 @@ It generalizes two earlier pieces of work: a pluggable-consistency prototype (Ca
 - The plugin platform that does not exist yet (§4).
 - A catalog of about 100 extension points with status, grade, and recommended action (§5).
 - The roadmap: **six cuts, many slots** (§6). The project does core surgery six times; every later idea plugs into an existing cut as an ordinary ticket.
-- Mick's Cassandra mindmap mapped onto the cuts (§6a).
+- Mick's Cassandra mindmap mapped onto the cuts (§6a), and Josh McKenzie's practitioner input with the changes it caused (§6b).
 - What not to do, open questions, and confidence notes (§7–9).
 
 ## Supporting reports

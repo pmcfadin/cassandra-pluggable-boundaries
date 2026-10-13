@@ -1,6 +1,6 @@
 # Pluggable boundaries for Apache Cassandra: catalog and proposed roadmap
 
-Status: draft synthesis, 2026-10-03. Built from eight research reports in [`reports/`](reports/) (01–08). Every grade, count, and `file:line` claim comes from those reports, which carry the citations. Mick Semb Wever's Apache Cassandra feature mindmap (not published here) is mapped onto the catalog in §6a.
+Status: draft synthesis, 2026-10-03; revised 2026-10-12 with practitioner input (§6b). Built from eight research reports in [`reports/`](reports/) (01–08). Every grade, count, and `file:line` claim comes from those reports, which carry the citations. Mick Semb Wever's Apache Cassandra feature mindmap (not published here) is mapped onto the catalog in §6a.
 
 | Report | Area |
 |---|---|
@@ -21,22 +21,24 @@ Cassandra already has about **100 extension points**, but almost none of them is
 
 ## Top 10 boundaries to create
 
-Ranked in build order. Earlier items unblock later ones and carry less risk. Each is a slot or stage of one of the six cuts in §6, so building all ten requires six core refactors, not ten.
+Ranked in build order, revised with practitioner input (§6b). Earlier items unblock later ones and carry less risk. Each is a slot or stage of one of the six cuts in §6, so building all ten requires six core refactors, not ten.
 
-| # | Boundary | Cut (§6) | Who uses it first | Mindmap ideas it unlocks |
-|---|---|---|---|---|
-| 1 | **Plugin platform**: `cassandra-api` artifact, isolated plugin loader, TCM plugin registry, conformance test kit | 0 | Every plugin below; pilots are `StartupCheck`, `IAuditLogger`, CEP-42 constraints | In-process upgrades |
-| 2 | **UCS compaction controller SPI** | 0 (slot) | Adaptive and cost-model compaction research | Adaptive UCS |
-| 3 | **Observability SPI**: metrics reporters with an OpenTelemetry bridge, tracing (CEP-32), event sinks, lifecycle hooks | 0 (slots) | cassandra-exporter, OTel agent, Management API: removes bytecode agents | Sidecar, K8ssandra |
-| 4 | **Change-stream SPI** (CDC v2): typed post-apply change records with an origin tag; fixes Accord writes being invisible to CDC | 3 | Debezium, DataStax CDC agent, Sidecar CDC (CEP-44) | Point-in-time backups, zero-downtime migrations, mutation-based repair |
-| 5 | **`cassandra-storage-format` library**: versioned SSTable and commitlog reader/writer usable outside the server | 3 | Cassandra Analytics (deletes per-version bridges), Medusa | Off-process Spark Analytics, attached Parquet, SQL reads |
-| 6 | **Management API**: one command model behind nodetool, JMX, CQL and Sidecar REST (CEP-38), plus Sidecar modules | 5 | cass-operator / Management API, Reaper | Sidecar, K8ssandra donation |
-| 7 | **Request pipeline**: admission check before the first durable write, plus a client front-end SPI | 1 | The domain guard from the consistency prototype; an HTTP or gRPC front end | Full SQL, Mongo, Redis, Data API, QUIC protocol, thin drivers |
-| 8 | **TransactionProvider**: pluggable execution engine on the request pipeline | 1 (slot) | Accord, plus the etcd and Ratis prototype providers | Interactive transactions, snapshot isolation, expressive consistency |
-| 9 | **Storage substrate** (CEP-36): per-directory channel factory, data placement, cache tier | 4 | An out-of-tree object-store implementation | Object storage, compute–storage separation |
-| 10 | **Read planner + statistics SPI with `VectorEngine`** (CEP-39) | 2 | The query-optimizer experiment; jvector plus a second vector engine | SAI, OR/NOT, sortable indexes, vector search |
+| # | Boundary | Cut (§6) | Existing CEP | Who uses it first | Ideas it unlocks |
+|---|---|---|---|---|---|
+| 1 | **Plugin platform**: `cassandra-api` artifact, isolated plugin loader, TCM plugin registry, conformance test kit | 0 | **None** (CEP-65 defers it); needs a new CEP | Every plugin below; pilots are `StartupCheck`, `IAuditLogger`, CEP-42 constraints | In-process upgrades |
+| 2 | **Metrics and observability**: a metrics *provider* (which metrics exist and how they are implemented) plus reporters with an OpenTelemetry bridge, tracing, event sinks, lifecycle hooks | 0 (slots) | CEP-32 OpenTelemetry (page says Accepted) covers tracing and export only | A leaner metrics implementation (§6b); cassandra-exporter, OTel agent, Management API | Removes bytecode agents; Sidecar, K8ssandra |
+| 3 | **Type provider**: first-class types added by a plugin under a stable type ID, with a format version and a TCM check that refuses schema using a type some node lacks | 0 (slot) | None | A local branch adding Postgres types (§6b) | Full SQL, Postgres compatibility |
+| 4 | **Memtable lifecycle and compaction controller**: a flush/eviction policy hook for the memtable API, and the UCS controller SPI | 0 (slots) | CEP-11 (memtable) and CEP-26 (UCS) shipped; these are tickets | Disk-backed memtables, idle-flush policies; adaptive compaction | Off-heap/reloadable memtables, adaptive UCS |
+| 5 | **Storage substrate** with the **compaction executor** as its first slot: per-directory channel factory, placement, cache tier, SSTable lifecycle events | 4 | CEP-36 (under discussion) covers the channel factory; CEP-60 overlaps on placement | Out-of-process compaction that scales independently; an out-of-tree object store | Object storage, compute–storage separation, unbounded compaction |
+| 6 | **Columnar scan**: a batch/projection read capability (`COLUMNAR_SCAN`) that a columnar format and channel can offer and range reads can use | 4 (+ read path) | None | HTAP columnar format (§6b); Analytics | Attached Parquet, SQL reads, HTAP |
+| 7 | **Change-stream SPI** (CDC v2): typed post-apply change records with an origin tag; fixes Accord writes being invisible to CDC | 3 | CEP-6 CDC v2 (draft); CEP-44 as first user | Debezium, DataStax CDC agent, Sidecar CDC | Point-in-time backups, zero-downtime migrations, mutation-based repair |
+| 8 | **`cassandra-storage-format` library**: versioned SSTable and commitlog reader/writer usable outside the server | 3 | None (CEP-63 calls it out of scope; CEP-65 is the closest vehicle) | Cassandra Analytics (deletes per-version bridges), Medusa | Off-process Spark Analytics |
+| 9 | **Request pipeline and client front ends**: admission before the first durable write, plus a front-end SPI for alternative wire formats | 1 | None; coordinate with CEP-64 (proxy execution) | gRPC or Arrow Flight front end (§6b); the consistency prototype's domain guard | Full SQL, Mongo, Redis, Data API, QUIC, thin drivers |
+| 10 | **TransactionProvider**: pluggable execution engine on the request pipeline | 1 (slot) | None; Accord (CEP-15) is provider #1 | Accord, plus the etcd and Ratis prototype providers | Interactive transactions, snapshot isolation, expressive consistency |
 
-Why this order: items 1–3 are small and prove the platform. Items 4–6 deliver the most value to existing ecosystem projects for the least core risk. Items 7–10 are where new engines (consistency, APIs, storage, planning) take off, and they depend on the platform being in place.
+Why this order: item 1 is the platform. Items 2–4 are node-local slots that let teams move past sore points without waiting on an upstream merge of their implementation. Items 5–6 move the storage substrate forward because columnar HTAP and independently scaled compaction are primary drivers for practitioners. Items 7–8 deliver the most to existing ecosystem projects. Items 9–10 open new engines at the coordinator.
+
+**Still on the roadmap, just outside the top 10:** the management API (CEP-38, accepted, so it can proceed under its own CEP) and the read planner with `VectorEngine` (CEP-39, under discussion). Both remain cuts 5 and 2 in §6.
 
 ## 2. What history says will and will not work (from [06](reports/06-upstream-history.md))
 
@@ -93,7 +95,7 @@ F1 changes no code and can start immediately. F2–F5 together are the "plumbing
 | Boundary | Status | Grade | Action | Notes |
 |---|---|---|---|---|
 | Compression `ICompressor` + CEP-49 providers | stable | B+ | Keep / Harden | Persisted compressor names pin plugins to data |
-| Memtable API (CEP-11) | stable | B | Harden | Leaks `ColumnFamilyStore` and commitlog mechanics |
+| Memtable API (CEP-11) | stable | B | Harden; **New (S)**: flush/eviction policy slot | Leaks `ColumnFamilyStore` and commitlog mechanics; lifecycle decisions are tied to `ColumnFamilyStore.FlushReason` (§6b) |
 | Row cache provider | stable | B− | Keep | |
 | `journal` package (Accord's log) | seam | B− | Formalize as a library | Remove the `StorageService` call; reusable by new providers and mutation tracking |
 | SSTable format API (CEP-17) | stable (node-wide only) | C+ | Harden | Huge abstract reader, shared version flags, local-file assumption |
@@ -122,7 +124,7 @@ F1 changes no code and can start immediately. F2–F5 together are the "plumbing
 | Triggers | stable, legacy | C | Keep (frozen) | |
 | Java UDF/UDA | stable, sandbox at risk | C | **New, time-boxed**: `FunctionRuntime` SPI | The sandbox depends on SecurityManager, deprecated and reportedly disabled on JDK 24+. Must land before Cassandra supports such a JDK |
 | Native function registry | closed | E | **New (S)**: `FunctionFactory` via loader | |
-| Custom types (`AbstractType`) | stable, legacy | D | Keep, discourage | |
+| Custom types (`AbstractType`) | stable, legacy | D | **New**: type provider slot (replaces "discourage"; §6b) | Load by stable type ID, not class name; format version; refuse schema when a node lacks the provider |
 | Virtual tables | good API, no loader | C+ / F | **New (S)**: `VirtualKeyspaceProvider` | Also the read path for observability plugins |
 | Query planning / index selection | seam | D | **New**: planner + statistics SPI (CEP-39) | Builds on `query-optimizer/`: shadow planner + `EXPLAIN` first |
 | CQL parse / prepare | closed | E | New (long): logical-plan IR for alternative front ends | |
@@ -188,6 +190,7 @@ F1 changes no code and can start immediately. F2–F5 together are the "plumbing
 | CIDR authorizer, KeyProvider/TDE | partial | D+ | New: key-management SPI | TDE covers only commitlog and hints |
 | Tracing | partial (sysprop) | D | **New**: OpenTelemetry tracing SPI (CEP-32) | Silent fallback on error |
 | Metrics reporters | removed (18743) | D | **New (S)**: `metrics_reporters` + OTel bridge | Removes the reason for most javaagents |
+| Metrics implementation (which metrics exist, how they are recorded) | closed | — | **New (S)**: metrics provider slot (§6b) | Many metrics per table are resource-heavy; lets a leaner implementation ship without an upstream merge |
 | FQL / BinLog | seam | D | → event-sink | |
 | nodetool / JMX commands | static | D | **New**: management-command SPI (CEP-38) | Three front ends: nodetool, JMX, CQL |
 | Lifecycle hooks | none | — | **New (S)**: five hooks | Daemon lifecycle, admin channel, seed reload, superuser provisioning, system keyspace replication. These are exactly what the Management API patches with ByteBuddy ([07] L5) |
@@ -224,11 +227,11 @@ The goal is that the project opens **six cuts**, and every idea after that, incl
 
 | Cut | Where it goes | Slots it opens (consumer or second implementation) | Catalog items absorbed |
 |---|---|---|---|
-| **0. Plugin platform and cluster registry** | Packaging, startup, TCM `Directory`, serializer layer | Every node-local slot: UCS controller, speculative retry, read repair, proximity, function factory, virtual keyspaces, metrics reporters/OTel, tracing, event sinks, lifecycle hooks, guardrail policy, key management, config source, startup checks, auth | F1–F7, `VerbRegistry`, plugin serializers, TCM `ExtensionKey` hardening, the node-local quick wins |
+| **0. Plugin platform and cluster registry** | Packaging, startup, TCM `Directory`, serializer layer | Every node-local slot: UCS controller, memtable flush/eviction policy, metrics provider, type provider, speculative retry, read repair, proximity, function factory, virtual keyspaces, metrics reporters/OTel, tracing, event sinks, lifecycle hooks, guardrail policy, key management, config source, startup checks, auth | F1–F7, `VerbRegistry`, plugin serializers, TCM `ExtensionKey` hardening, the node-local quick wins |
 | **1. Request pipeline** | Coordinator entry: front end → logical request → admit → execute | Client front ends (CQL native as #1, HTTP/gRPC, QUIC, Mongo, Redis, SQL), admission policies (domain guard), per-request semantic options, execution engines (StorageProxy as #1, Accord, TransactionProvider) | Admission SPI, client front-end SPI, request API, `QueryHandler` replacement, TransactionProvider |
 | **2. Read planning** | Between `SelectStatement.getQuery` and `ReadCommand`, sharing Cut 1's logical request type | Planners (shadow/CBO), statistics providers, index implementations, `VectorEngine`, paging strategies | Planner + stats (CEP-39), Index API hardening, VectorEngine, SAI version formalization |
 | **3. Data out** | One versioned row/file model used outside the server | Change listeners (`cdc_raw` as #1, Debezium, Accord-origin changes), offline readers/writers, analytics bridges, snapshot/backup tools, exporters (Parquet, Iceberg), PITR, CEP-45 reconciliation | Storage-format library, change-stream SPI, snapshot manifest, `CQLSSTableWriter` |
-| **4. Storage substrate** | Where bytes live and how they are maintained: per-directory channel factory, placement, cache tier, SSTable lifecycle publish, compaction executor | Object storage, hot/cold tiering, NVMe cache, remote SSTables, compaction offload, streaming over object store | CEP-36 split, placement policy, cache tier, remote lifecycle, compaction offload, streaming transport |
+| **4. Storage substrate** | Where bytes live and how they are maintained: per-directory channel factory, placement, cache tier, SSTable lifecycle publish, compaction executor, `COLUMNAR_SCAN` capability | **Compaction executor first** (out-of-process compaction), then object storage, hot/cold tiering, NVMe cache, remote SSTables, columnar/HTAP scans, streaming over object store | CEP-36 split, placement policy, cache tier, remote lifecycle, compaction offload, streaming transport |
 | **5. Operations surface** | One management command model behind nodetool, JMX, CQL, and Sidecar REST, plus the Sidecar module loader | Commands, Sidecar modules (Management API, ecChronos, backup), operator integrations | CEP-38 command SPI, Sidecar plugin model, the five lifecycle-hook consumers |
 
 **Deliberately not cuts** (they stay internal; revisit only after the six land): metadata-log backend, whole-table storage, WAL, gossip/hints/batchlog, and new `ConsistencyLevel` codes. Repair-engine and placement-provider (CEP-60) plugins are expected to fit as slots on Cut 0 (TCM-replayed decisions) plus Cut 3 (reconciliation input). If review shows they don't, they would be the seventh cut.
@@ -236,19 +239,18 @@ The goal is that the project opens **six cuts**, and every idea after that, incl
 ### 6.3 Order
 
 ```
-Cut 0 ──┬── Cut 3 (data out)        ┐ lowest risk, highest ecosystem payoff
-        ├── Cut 5 (operations)      ┘
-        ├── Cut 1 (request pipeline) ── Cut 2 (read planning)
-        └── Cut 4 (storage substrate)
+Cut 0 ──┬── Cut 4 (storage substrate)  ┐ practitioner drivers: compaction offload, columnar/HTAP
+        ├── Cut 3 (data out)           ┘ highest ecosystem payoff
+        ├── Cut 5 (operations)
+        └── Cut 1 (request pipeline) ── Cut 2 (read planning)
 ```
 
 | Step | Cut | Why here | Exit criterion |
 |---|---|---|---|
 | 0 | Rules (no code) | Public-SPI CEP, annotation sweep, layering baseline. File the Accord-CDC gap and UDF/JDK risk | CEP vote; every existing seam labeled |
-| 1 | **Cut 0** | Everything else uses its loader, registry, and TCK. Pilots: `StartupCheck`, `IAuditLogger`, CEP-42 constraints, memtable/SSTable TCK from `test-latest` | An out-of-tree plugin builds against `cassandra-api` only, passes its TCK in ASF CI, and is refused cleanly by a node that lacks it. Then three node-local slots land as ordinary tickets (UCS controller first) |
-| 2 | **Cut 3** and **Cut 5** in parallel | Mostly additive; few hot-path changes; biggest external pain | One external project (Analytics, Debezium, or the Management API) deletes a per-version module. Accord writes appear in the change stream |
-| 3 | **Cut 1** | Largest refactor (about 62 call sites). Designed once for front ends, admission, and engines together | CQL native and one second front end run through it. TransactionProvider and the domain guard plug in as slots |
-| 3′ | **Cut 4** (parallel with Cut 1) | Independent code area; CEP-36 is already under discussion | Local FS and one out-of-tree object store pass the same TCK |
+| 1 | **Cut 0** | Everything else uses its loader, registry, and TCK. Pilots: `StartupCheck`, `IAuditLogger`, CEP-42 constraints, memtable/SSTable TCK from `test-latest` | An out-of-tree plugin builds against `cassandra-api` only, passes its TCK in ASF CI, and is refused cleanly by a node that lacks it. Then node-local slots land as ordinary tickets: metrics provider, type provider, memtable lifecycle policy, UCS controller |
+| 2 | **Cut 4** and **Cut 3** in parallel | Cut 4 moved up for out-of-process compaction and columnar HTAP (§6b); independent code area, and CEP-36 is already under discussion. Cut 3 is mostly additive with the biggest external pain | Compaction runs through the executor interface, both in-process and out of process, with the same results; local FS and one out-of-tree object store pass the same TCK. One external project (Analytics or Debezium) deletes a per-version module; Accord writes appear in the change stream |
+| 3 | **Cut 5** and **Cut 1** | Cut 5 can follow CEP-38, which is already accepted. Cut 1 is the largest refactor (about 62 call sites), designed once for front ends, admission, and engines together | CQL native and one second front end (gRPC or Arrow Flight) run through Cut 1; TransactionProvider and the domain guard plug in as slots |
 | 4 | **Cut 2** | Reuses Cut 1's logical request type | Shadow planner + `EXPLAIN` with a second index or vector engine as a slot |
 
 ### 6.4 What this saves
@@ -294,6 +296,19 @@ The mindmap groups ideas into four clusters: query features, transaction feature
 What the comparison shows:
 - Cut 1 (request pipeline) and Cut 3 (data out) carry most of the map: the replacement APIs on one side, analytics and SQL reads on the other. That is why Cut 3 goes early and Cut 1 is designed for the whole front-end family at once.
 - "Expressive consistency levels" conflicts with the catalog's advice to keep `ConsistencyLevel` wire codes closed. Resolve this with Mick before proposing it.
+
+## 6b. Practitioner input: Josh McKenzie (2026-10)
+
+Josh McKenzie listed the boundaries he would want first, unprioritized. This summary is a paraphrase. Each item is mapped to the cut that absorbs it and to the change it caused in this roadmap.
+
+| Josh's item | Cut | Effect on this roadmap |
+|---|---|---|
+| **Memtable format and lifecycle**: e.g. a disk-backed memtable with a small in-memory cache before flush; idle-memtable flush and eviction | 0 | The memtable API (CEP-11) already lets an implementation declare `writesAreDurable` / `writesShouldSkipCommitLog`. Lifecycle was a gap: flush decisions go through `shouldSwitch(FlushReason)`, and `FlushReason` is nested in `ColumnFamilyStore`. **Added** a flush/eviction policy slot (top 10 #4). |
+| **Metrics**: the current implementation is resource-heavy, with many metrics per table (he estimates about 240). Pluggability would let teams get past this without being blocked on an upstream merge | 0 | The roadmap covered only *export* (reporters, OTel). **Added** a metrics provider slot covering which metrics exist and how they are implemented (top 10 #2). |
+| **Storage engine**: primarily columnar format support for HTAP; secondarily the row encoding format (vints are problematic) | 4 | Columnar scan was in the long horizon. **Moved up** to top 10 #6 as a `COLUMNAR_SCAN` capability. Row encoding stays long-horizon: the same row serialization is used on the internode wire, so changing it is a format-versioning project, not a plug point. |
+| **Types**: add many first-class types (e.g. all Postgres types) without disrupting the system. He has a branch for this | 0 | The catalog recommended *discouraging* custom types. **Reversed** to a type provider slot with stable type IDs, a format version and a TCM presence check (top 10 #3). His branch is the candidate first implementation. |
+| **Compaction**: out-of-process compaction so it scales up and down independently based on the state of the data | 4 | **Moved up**: the compaction executor becomes Cut 4's first slot, and Cut 4 moves to step 2 of §6.3. Remote execution needs UUID SSTable IDs and a shared or remote channel factory. |
+| **Wire format**: gRPC or Arrow Flight instead of CQL native from client to coordinator; ideally one format shared with internode to avoid translation | 1 | Already the client front-end slot (top 10 #9). The single-format idea also touches the internode verb registry in Cut 0. He notes that a single row-oriented format (such as clients encoding tries) would not suit a hybrid row/columnar engine. |
 
 ## 7. What not to do
 
